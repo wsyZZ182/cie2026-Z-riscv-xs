@@ -18,3 +18,7 @@ build/
 
 # 临时文件
 *.tmp
+
+# videos whitelist
+!videos/
+!videos/*.mp4
