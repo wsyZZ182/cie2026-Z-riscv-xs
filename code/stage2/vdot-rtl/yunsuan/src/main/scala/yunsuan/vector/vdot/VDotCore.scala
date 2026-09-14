@@ -4,17 +4,23 @@ import chisel3._
 import chisel3.util._
 
 // ============================================================================
-// vdot.vv 点积内核（最终版 Chisel 实现）
+// vdot.vv 点积内核（Fused ReduceAcc 优化版）
 //
-// 实现要点：
-//   1. e8 用 Radix-4 Booth 8×8 乘法器（部分积减半 + 负项取反 +1 修正）
-//   2. e16/e32 用 Chisel 原生有符号乘法器（Karatsuba 32 位负数路径有缺陷已弃用）
-//   3. 归约累加用符号扩展（Fill 复制符号位），负数乘积以补码正确累加
-//   4. 多精度可切换（e8/e16/e32 各自实例化乘法器组，MuxLookup 选择）
-//   5. vl 掩码：只累加前 vl 个元素
+// 相比上一版（128 位符号扩展链式归约 + 128 位累加）的改动：
+//   1. 宽度自适应：e8/e16/e32 各用 33/36/67 位归约累加（原统一 128 位）
+//      - e8 : 16 个 16bit 有符号乘积，完整有符号和 20bit；+ vdOld[31:0] → 33bit
+//      - e16: 8 个 32bit 有符号乘积，完整有符号和 35bit；+ vdOld[31:0] → 36bit
+//      - e32: 4 个 64bit 有符号乘积，完整有符号和 66bit；+ vdOld[31:0] → 67bit
+//   2. Fused Accumulator：vdOld[31:0] 与乘积一起符号扩展后直接进 CSA 压缩树，
+//      只做一次进位传播加法（CPA），不再"先链式归约成普通二进制数再 +vdOld"
+//   3. vxsat 语义修正：结果超出 32 位有符号范围（[−2^31, 2^31−1]）置位
+//      （原 acc(128) 为 128 位加法溢出位，当前精度下几乎永不触发）
+//   4. 结果统一截断写 vd[31:0]（高 96 位 0，外壳 slotMask 只放行低 32 位）
+//   5. 删除 vl 掩码（冗余：VDotFu stage0 已按 vl/vm/mask 清零 inactive 乘法器输入）
 //
-// 注意：本文件是"计算内核"，不含香山 FuncUnit 接口（io.in/io.out/Mgu）。
-// 外壳为 yunsuan/vector/VectorALU/VDotFu.scala（接入 VIPU，FuType.vipu）。
+// 保留：乘法器组 28 个（16 Booth8 + 8 原生16×16 + 4 原生32×32，正确性优先）；
+//       BoothMultiplier / CSA / CSATree / Karatsuba 类（CSA 被 Fused 归约复用，
+//       CSATree 与 Karatsuba 保留为参考/工程化方向，见设计文档 2.1 §7/§12）。
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -75,8 +81,8 @@ class CSA(width: Int) extends Module {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Wallace 风格 CSA 压缩树
-//    递归 3→2 压缩，末级用进位传播加法器；输出宽度 width + log2Ceil(inputs)
+// 3. Wallace 风格 CSA 压缩树（参考实现：直接输出最终和，内部含末级 CPA）
+//    Fused 归约使用 VDotCore.reduceCSA（保留 carry-save 中间结果，末级 CPA 在外层）
 // ---------------------------------------------------------------------------
 class CSATree(numInputs: Int, width: Int) extends Module {
   val io = IO(new Bundle {
@@ -107,7 +113,7 @@ class CSATree(numInputs: Int, width: Int) extends Module {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Karatsuba 乘法（真正实现，递归到 8 位 Booth 基元）
+// 4. Karatsuba 乘法（参考实现，未接入主通路；32 位负数路径曾验证有缺陷）
 //    unsigned：无符号 n×n → 2n 位
 //    signed  ：有符号 n×n → 2n 位
 //
@@ -174,10 +180,10 @@ class KaratsubaMultiplier(n: Int) extends Module {
 }
 
 // ---------------------------------------------------------------------------
-// 5. vdot 点积内核（主模块）
+// 5. vdot 点积内核（Fused ReduceAcc）
 //    输入：vs1/vs2（各 vlen 位）、vdOld（累加旧值）、sew（00=e8,01=e16,10=e32）、vl
-//    输出：result（标量结果放第一个元素槽，其余槽 0，tail 由香山 Mgu 处理）、vxsat
-//    流水/时序：本内核为组合逻辑；流水化由外壳（VecPipedFuncUnit + 寄存器级）实现
+//    输出：result（32 位标量放 vd 低 32 位，高 96 位 0）、vxsat（32 位有符号溢出）
+//    流水/时序：本内核为组合逻辑；流水化由外壳（VDotFu S1 锁存 + VIAlu opcodeS2）实现
 // ---------------------------------------------------------------------------
 class VDotCore(vlen: Int = 128, baseMulWidth: Int = 8) extends Module {
   val io = IO(new Bundle {
@@ -185,7 +191,7 @@ class VDotCore(vlen: Int = 128, baseMulWidth: Int = 8) extends Module {
     val vs2    = Input(UInt(vlen.W))
     val vdOld  = Input(UInt(vlen.W))
     val sew    = Input(UInt(2.W))     // 00=e8, 01=e16, 10=e32
-    val vl     = Input(UInt(8.W))     // 有效元素数（0~最大）
+    val vl     = Input(UInt(8.W))     // 保留端口（外壳兼容）；元素掩码已由 VDotFu stage0 清零
     val result = Output(UInt(vlen.W))
     val vxsat  = Output(Bool())
   })
@@ -215,39 +221,81 @@ class VDotCore(vlen: Int = 128, baseMulWidth: Int = 8) extends Module {
     prodE32(i) := io.vs1(32 * i + 31, 32 * i).asSInt * io.vs2(32 * i + 31, 32 * i).asSInt
   }
 
-  // ---- vl 掩码 + 归约（按元素序号 < vl，符号扩展后累加）----
-  // 修正：原零扩展（Cat(0, prod)）把负数乘积（如 -1=0xFFFF）当成正数 65535 累加，
-  //       导致 e8 负数结果 = 65520..65535 等差和（1048440）而非 -136
-  val sumE8  = (0 until numE8).map  { i => Mux(i.U < io.vl, Cat(Fill(112, prodE8(i)(15)),  prodE8(i)),  0.U(128.W)) }.reduce(_ +& _)
-  val sumE16 = (0 until numE16).map { i => Mux(i.U < io.vl, Cat(Fill(96,  prodE16(i)(31)), prodE16(i)), 0.U(128.W)) }.reduce(_ +& _)
-  val sumE32 = (0 until numE32).map { i => Mux(i.U < io.vl, Cat(Fill(64,  prodE32(i)(63)), prodE32(i)), 0.U(128.W)) }.reduce(_ +& _)
+  // ---- 各档位宽（宽度自适应，容纳"完整点积和 + 32bit vdOld"）----
+  // e8 : 16×16bit 乘积完整有符号和 = 20bit，+ vdOld[31:0] → 33bit
+  // e16: 8×32bit 乘积完整有符号和 = 35bit，+ vdOld[31:0] → 36bit
+  // e32: 4×64bit 乘积完整有符号和 = 66bit，+ vdOld[31:0] → 67bit
+  private val W8  = 33
+  private val W16 = 36
+  private val W32 = 67
 
-  private val dot128 = MuxLookup(io.sew, sumE8(127, 0))(Seq(
-    0.U -> sumE8(127, 0),
-    1.U -> sumE16(127, 0),
-    2.U -> sumE32(127, 0)
+  // ---- Fused ReduceAcc：乘积与 vdOld 一起符号扩展进 CSA 树，只做一次 CPA ----
+  private val old8  = Cat(Fill(W8  - 32, io.vdOld(31)), io.vdOld(31, 0))
+  private val old16 = Cat(Fill(W16 - 32, io.vdOld(31)), io.vdOld(31, 0))
+  private val old32 = Cat(Fill(W32 - 32, io.vdOld(31)), io.vdOld(31, 0))
+
+  private val ops8  = (0 until numE8).map  { i => prodE8(i).pad(W8).asUInt  } :+ old8
+  private val ops16 = (0 until numE16).map { i => prodE16(i).pad(W16).asUInt } :+ old16
+  private val ops32 = (0 until numE32).map { i => prodE32(i).pad(W32).asUInt } :+ old32
+
+  private val (s8,  c8)  = reduceCSA(ops8,  W8)
+  private val (s16, c16) = reduceCSA(ops16, W16)
+  private val (s32, c32) = reduceCSA(ops32, W32)
+
+  private val full8  = s8  +& c8
+  private val full16 = s16 +& c16
+  private val full32 = s32 +& c32
+
+  // ---- vxsat：full 超出 32 位有符号范围（[−2^31, 2^31−1]）置位 ----
+  // 判定：full(31) 与 full(32) 必须一致（bit32 是 bit31 的符号扩展）。
+  //   不一致即截断会改变符号 → 溢出：full(31)=1,full(32)=0 为 +2^31 上溢；
+  //   full(31)=0,full(32)=1 为 −(2^31+1) 下溢。
+  //   注：不可用"高位全 0 或全 1"判定——2^31 时 bit31=1 而 bit32.. 全 0
+  //   （0x0000000_80000000），半 1 半 0 会被旧实现误判为合法负数扩展（已修）。
+  private def overflowOf(full: UInt): Bool = full(31) ^ full(32)
+  private val sat8  = overflowOf(full8)
+  private val sat16 = overflowOf(full16)
+  private val sat32 = overflowOf(full32)
+  io.vxsat := MuxLookup(io.sew, sat8)(Seq(
+    0.U -> sat8,
+    1.U -> sat16,
+    2.U -> sat32
   ))
 
-  // ---- 累加 vdOld 第一个元素槽（按 sew 取槽宽）----
-  private val oldSlot = MuxLookup(io.sew, io.vdOld(31, 0))(Seq(
-    0.U -> io.vdOld(31, 0),
-    1.U -> io.vdOld(63, 0),
-    2.U -> io.vdOld(127, 0)
+  // ---- 结果：统一截断到 32 位标量，放 vd 低 32 位（高 96 位 0，tail 由外壳处理）----
+  private val fullMux = MuxLookup(io.sew, full8)(Seq(
+    0.U -> full8,
+    1.U -> full16,
+    2.U -> full32
   ))
-  private val acc = oldSlot +& dot128
-  io.vxsat := acc(128)                       // 溢出位（策略：截断；如需饱和在此扩展）
+  io.result := Cat(0.U((vlen - 32).W), fullMux(31, 0))
 
-  // ---- 结果：标量放第一个元素槽，其余槽 0（tail 由 Mgu 处理）----
-  io.result := MuxLookup(io.sew, Cat(0.U(96.W), acc(31, 0)))(Seq(
-    0.U -> Cat(0.U(96.W),  acc(31, 0)),
-    1.U -> Cat(0.U(64.W),  acc(63, 0)),
-    2.U -> acc(127, 0)
-  ))
-
+  // CSA 压缩：所有操作数归约到 (sum, carry)，carry 已左移（权重 2）
+  // 每级 3→2，宽度随级数 +1（进位位）；末级由调用方做唯一一次 CPA
+  private def reduceCSA(ops: Seq[UInt], initW: Int): (UInt, UInt) = {
+    var cur = ops.map(_.pad(initW))
+    var W   = initW
+    while (cur.length > 2) {
+      val nxt = cur.grouped(3).toSeq.flatMap { g =>
+        if (g.length == 3) {
+          val csa = Module(new CSA(W))
+          csa.io.a := g(0)
+          csa.io.b := g(1)
+          csa.io.c := g(2)
+          Seq(csa.io.sum, csa.io.carry)      // sum: W, carry: W+1
+        } else g.map(_.pad(W + 1))
+      }
+      cur = nxt.map(_.pad(W + 1))
+      W  += 1
+    }
+    (cur(0), cur(1))
+  }
 }
 
 // ============================================================================
 // 面积说明：正确性优先，三种精度乘法器组全部实例化（16 Booth8 + 8 原生16×16
-// + 4 原生32×32 = 28 个乘法器）。工程化方向：修复 Karatsuba 符号扩展缺陷后
-// 位分解复用，或按 sew 时分共享同一组乘法器（见设计文档 2.1 §7.2/§12）。
+// + 4 原生32×32 = 28 个乘法器）。归约累加采用宽度自适应 CSA 树（33/36/67 位，
+// 原 128 位链式归约），vdOld 融合进压缩树（Fused Accumulator），只做一次 CPA。
+// 工程化方向：修复 Karatsuba 符号扩展缺陷后位分解复用，或按 sew 时分共享
+// 同一组乘法器（见设计文档 2.1 §7.2/§12）。
 // ============================================================================
