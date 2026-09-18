@@ -1,0 +1,54 @@
+diff --git a/src/isa/riscv64/instr/rvv/decode.h b/src/isa/riscv64/instr/rvv/decode.h
+index 421479e9..5287a7e6 100644
+--- a/src/isa/riscv64/instr/rvv/decode.h
++++ b/src/isa/riscv64/instr/rvv/decode.h
+@@ -276,6 +276,7 @@ def_THelper(vopivi) {
+   def_INSTR_TAB("000000 ? ????? ????? ??? ????? ????? ??", vadd);
+   def_INSTR_TAB("000010 ? ????? ????? ??? ????? ????? ??", vsub);
+   def_INSTR_TAB("000011 ? ????? ????? ??? ????? ????? ??", vrsub);
++  def_INSTR_TAB("000100 ? ????? ????? 011 ????? ????? ??", vdot); // vdot.vv custom dot product, funct3=011 exact match before vminu wildcard
+   def_INSTR_TAB("000100 ? ????? ????? ??? ????? ????? ??", vminu);
+   def_INSTR_TAB("000101 ? ????? ????? ??? ????? ????? ??", vmin);
+   def_INSTR_TAB("000110 ? ????? ????? ??? ????? ????? ??", vmaxu);
+diff --git a/src/isa/riscv64/instr/rvv/vcompute.h b/src/isa/riscv64/instr/rvv/vcompute.h
+index 65fedb75..2c5aba86 100644
+--- a/src/isa/riscv64/instr/rvv/vcompute.h
++++ b/src/isa/riscv64/instr/rvv/vcompute.h
+@@ -265,8 +265,36 @@ def_EHelper(vdotu) {
+   longjmp_exception(EX_II);
+ }
+ 
++// vdot.vv vd, vs2, vs1 : custom vector dot-product (matches XiangShan RTL VDotCore semantics)
++// sum = sign_ext(vd_old[31:0]) + SUM_{i=0}^{vl-1}( sign_ext(vs1[i]) * sign_ext(vs2[i]) )
++// vd[31:0] = sum[31:0]; vd[127:32] = 0 (32-bit scalar writeback)
++// vxsat: RTL vxsat CSR writeback is commented out under MinimalConfig, so we do NOT write vcsr either (keep difftest consistent)
+ def_EHelper(vdot) {
+-  longjmp_exception(EX_II);
++  vector_vvv_check(s, false);
++  check_vstart_exception(s);
++  if(check_vstart_ignore(s)) {
++    vp_set_dirty();
++    return;
++  }
++  // vd old value (low 32-bit, signed) as initial accumulator, same as RTL vdOld sign-extended into CSA tree
++  get_vreg(id_dest->reg, 0, s1, 2, vtype->vlmul, 1, 0);
++  __int128 acc = (__int128)(int64_t)*s1;
++  for(word_t idx = vstart->val; idx < vl->val; idx ++) {
++    rtlreg_t mask = get_mask(0, idx);
++    if(s->vm == 0 && mask == 0) {
++      continue;
++    }
++    get_vreg(id_src->reg, idx, s0, vtype->vsew, vtype->vlmul, 1, 0);
++    get_vreg(id_src2->reg, idx, s2, vtype->vsew, vtype->vlmul, 1, 0);
++    acc += (__int128)(int64_t)*s0 * (__int128)(int64_t)*s2;
++  }
++  // writeback: low 32 bits = acc, high 96 bits = 0 (same as RTL Cat(0.U(96.W), full(31,0)))
++  vreg_i(id_dest->reg, 0) = (uint32_t)acc;
++  vreg_i(id_dest->reg, 1) = 0;
++  vreg_i(id_dest->reg, 2) = 0;
++  vreg_i(id_dest->reg, 3) = 0;
++  vp_set_dirty();
++  vstart->val = 0;
+ }
+ 
+ def_EHelper(vwsmaccu) {
