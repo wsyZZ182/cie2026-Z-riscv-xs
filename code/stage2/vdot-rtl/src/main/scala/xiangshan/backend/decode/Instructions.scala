@@ -27,7 +27,8 @@ object Zimop {
 }
 
 // 2026 CIE RISC-V 大赛·香山应用赛道：自定义 vdot.vv 归约指令（阶段二）
-// 编码：funct6=000100(OPMVV 区空闲) + vm + vs2 + vs1 + funct3=100(OPMVV) + vd + opcode=1010111
+// 编码：funct6=000100 + vm + vs2 + vs1 + funct3=011 + vd + opcode=1010111
+// 注：funct3=100(OPMVV) 下 funct6=000100 与 vminu.vx 冲突，故选用 funct3=011 的空闲组合
 object VDot {
-  def VDOT_VV = BitPat("b000100_?_?????_?????_011_?????_1010111")  // 修正：funct3=100 与 vminu.vx 冲突，改用空闲的 011
+  def VDOT_VV = BitPat("b000100_?_?????_?????_011_?????_1010111")
 }

@@ -35,28 +35,28 @@
 ## 📁 项目结构
 
 ```
-cie2026-<团队名>-<作品名>/
-├── docs/                     # 设计文档与报告
-│   ├── stage1-env-deploy.md       # 阶段一：环境部署与向量加法执行分析
-│   ├── stage2-vdot-design.md      # 阶段二：vdot.vv 设计文档（语义/微架构/数据通路）
-│   ├── stage2-test-report.md      # 阶段二：正数/负数/边界值测试报告
-│   └── stage3-perf-analysis.md    # 阶段三：协同仿真与延迟加速比分析报告
-├── rtl/                      # RTL 实现（Chisel / Verilog）
-│   ├── vdot.scala                 # vdot.vv 功能单元实现
-│   └── ...
-├── nemu/                     # NEMU 模拟器扩展（阶段三）
-│   └── vdot-nemu.patch
-├── test/                     # 测试用例与 workload
-│   ├── positive/
-│   ├── negative/
-│   └── boundary/
-├── wave/                     # 关键波形截图（不放原始大体积波形文件）
-├── scripts/                  # 构建、仿真、数据采集脚本
-├── videos/                   # 录屏（如体积过大可放外链）
+cie2026-Z-riscv-xs/
+├── code/
+│   ├── stage1/vadd/                # 阶段1：vadd 向量加法应用
+│   ├── stage2/vdot-rtl/            # 阶段2：Chisel RTL（9 个文件，数据通路：
+│   │                               #   Instructions→VecDecoder→VIPU→VIAlu→VDotFu→VDotCore）
+│   ├── stage2/vdot-test/           # 阶段2.3：功能测试（13 用例：正/负/边界/vl/溢出）
+│   └── stage3/
+│       ├── nemu-vdot/              # 阶段3.1：NEMU 扩展（decode.h + vcompute.h + .patch）
+│       ├── vdot-baseline/          # 阶段3.2：基线程序（标准 RVV 组合实现同 13 用例）
+│       └── bench/                  # 阶段3.3：性能测试 per-kernel 源码（12 个 .c + Makefile）
+├── docs/
+│   ├── stage1/                     # 1.3 向量加法指令执行过程文档
+│   ├── stage2/                     # 2.1 设计文档 / 2.2 RTL 实现说明 / 2.3 功能验证报告
+│   └── stage3/                     # 3.1 NEMU+协同仿真 / 3.2 基线验证 / 3.3 延迟加速比分析
+├── logs/                           # 原始运行日志：pk-*.log ×12（rdcycle 数据）、
+│                                   #   commit trace、difftest cosim 日志
+├── screenshots/stage3/              # commit trace 写回证据截图
+├── videos/                         # 阶段1 hello 运行录屏
 └── README.md
 ```
 
-> 说明：原始 `.vcd`/`.fst` 波形文件体积较大，已通过 `.gitignore` 排除；仓库中仅保留关键波形截图与分析结论。
+> 说明：原始 `.vcd` 波形文件（451~463MB）已通过 `.gitignore` 排除；仓库中仅保留 commit trace 证据与分析结论。
 
 ## ✅ 三阶段完成情况
 
@@ -127,16 +127,19 @@ cd xs-env/XiangShan
 ### 4. 生成波形
 
 ```bash
-./build/emu -i <workload>.bin --dump-wave -b 10000 -e 20000
-# 用 gtkwave 查看生成的 .vcd / .fst
+./build/emu -i <workload>.bin --dump-wave-full -b 10000 -e 20000
+# 用 gtkwave 查看生成的 .vcd
 ```
 
 ## 🔧 vdot.vv 关键设计说明
 
-- **指令语义**：`vdot.vv vd, vs2, vs1`——对 vs2 与 vs1 中每 4 个 8-bit 子元素逐元素相乘，结果累加到 vd 的 32-bit 累加元素（SEW=8, VLEN=128）。
-- **数据通路**：子元素符号扩展 → 4 路 8×8 乘法 → 加法树 → 32-bit 累加器。
-- **接入方式**：在香山向量执行单元（yunsuan）中注册自定义 opcode，复用现有向量译码与发射通路，新增点积功能单元。
-- **设计文档**：详见 [`docs/stage2-vdot-design.md`](docs/stage2-vdot-design.md)。
+- **指令语义**：`vdot.vv vd, vs2, vs1`（VLEN=128，SEW=8/16/32）——
+  `vd[31:0] = sext(vd_old[31:0]) + Σ sext(vs1[i]) × sext(vs2[i])`，
+  vd 高 96 位写 0；截断溢出时置 `vxsat`。要纯 Σ 先把 vd 初值清零。
+- **指令编码**：funct6=`000100` + funct3=`011` + opcode=`1010111`（示例 `0x12103157` = vdot.vv v2,v0,v1）。funct3=011 为 OPMVV 区空闲组合，避开 funct3=000 下 funct6=000100 与 `vminu.vx` 的冲突。
+- **数据通路**：e8 档 16 个 int8 元素送入 **16 个 Radix-4 Booth 8×8 乘法器**；e16/e32 档用原生乘法器；所有乘积与 `vd_old[31:0]` 符号扩展后融合进 **CSA 压缩树**，仅一次进位传播加法完成"乘 + 归约 + 累加"，统一截断 32 位写回。
+- **接入方式**：在香山向量执行单元（yunsuan/VIPU）注册自定义 opcode（`VipuType.vdot_vv=0b01000011`），复用现有向量译码、发射与写回通路，新增点积功能单元 VDotFu/VDotCore。
+- **设计文档**：详见 [`docs/stage2/2.1-vdot-vv-设计文档.md`](docs/stage2/2.1-vdot-vv-设计文档.md)。
 
 ## 🧪 测试与验证
 
@@ -145,21 +148,21 @@ cd xs-env/XiangShan
 | 正数点积 | 全正数输入 | ✅ 通过 |
 | 负数点积 | 含负数输入（验证符号扩展） | ✅ 通过 |
 | 边界值 | 127 / -128 / 0 / 溢出累加 | ✅ 通过 |
-| 协同仿真 | NEMU vs RTL 逐指令比对 | ✅ 一致 |
+| 协同仿真 | NEMU vs RTL 逐指令比对（Difftest） | ✅ 一致 |
 
-详细测试报告见 [`docs/stage2-test-report.md`](docs/stage2-test-report.md) 与 [`docs/stage3-perf-analysis.md`](docs/stage3-perf-analysis.md)。
+详细测试报告见 [`docs/stage2/2.3-功能验证报告.md`](docs/stage2/2.3-功能验证报告.md) 与 [`docs/stage3/3.3-延迟加速比分析.md`](docs/stage3/3.3-延迟加速比分析.md)。
 
 ## 📊 性能分析
 
-在相同 workload 下，对比「已有向量指令组合实现的 Baseline」与「vdot 专用加速单元」的执行延迟：
+在 MinimalConfig 下，以 N=10/100/500 三组独立程序测量"周期/op"斜率（run3 取最小），对比「标准 RVV 组合 Baseline」与「vdot 专用加速单元」：
 
-| 数据规模 | Baseline 周期数 | vdot 周期数 | 加速比 |
+| 场景 | Baseline（周期/op） | vdot（周期/op） | 加速比 |
 |---|---|---|---|
-| 4 元素 | `<待填>` | `<待填>` | `<待填>x` |
-| 8 元素 | `<待填>` | `<待填>` | `<待填>x` |
-| 16 元素 | `<待填>` | `<待填>` | `<待填>x` |
+| 延迟·依赖链（e8/e16/e32） | 7.0 ~ 7.1 | 7.0 | ≈1.0×（打平，均受写回等待支配） |
+| 吞吐·背靠背（e8/e16） | 7.1 | 1.78 | **≈4.0×** |
+| 吞吐·背靠背（e32） | 2.7 | 1.78 | **≈1.5×** |
 
-> 完整数据采集方法、面积开销与能效讨论见 [`docs/stage3-perf-analysis.md`](docs/stage3-perf-analysis.md)。
+> 写回证据：commit trace 显示 vdot 单指令单次写回 v2（data 每次 +0x88=136），基线需 vwmul+vwredsum 两条指令两次写回。完整测量方法、数据与 commit trace 见 [`docs/stage3/3.3-延迟加速比分析.md`](docs/stage3/3.3-延迟加速比分析.md)，原始 rdcycle 数据在 `logs/stage3/pk-*.log`。
 
 ## 📦 提交说明
 
