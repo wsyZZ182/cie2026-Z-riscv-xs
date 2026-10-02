@@ -41,18 +41,22 @@ cie2026-Z-riscv-xs/
 │   ├── stage2/vdot-rtl/            # 阶段2：Chisel RTL（9 个文件，数据通路：
 │   │                               #   Instructions→VecDecoder→VIPU→VIAlu→VDotFu→VDotCore）
 │   ├── stage2/vdot-test/           # 阶段2.3：功能测试（13 用例：正/负/边界/vl/溢出）
+│   ├── stage2/karatsuba-compare/   # 阶段2.4 探索：4 种乘法器（Native/Booth/School/Karatsuba）SV 实现
 │   └── stage3/
 │       ├── nemu-vdot/              # 阶段3.1：NEMU 扩展（decode.h + vcompute.h + .patch）
 │       ├── vdot-baseline/          # 阶段3.2：基线程序（标准 RVV 组合实现同 13 用例）
 │       └── bench/                  # 阶段3.3：性能测试 per-kernel 源码（12 个 .c + Makefile）
 ├── docs/
-│   ├── stage1/                     # 1.3 向量加法指令执行过程文档
-│   ├── stage2/                     # 2.1 设计文档 / 2.2 RTL 实现说明 / 2.3 功能验证报告
+│   ├── stage1/                     # 1.3 向量加法执行过程文档（.docx）
+│   ├── stage2/                     # 2.1 设计文档 / 2.2 RTL 实现说明 / 2.3 功能验证报告 /
+│   │                               #   2.4 Karatsuba 乘法器算法面积-延迟对比（探索性）
 │   └── stage3/                     # 3.1 NEMU+协同仿真 / 3.2 基线验证 / 3.3 延迟加速比分析
-├── logs/                           # 原始运行日志：pk-*.log ×12（rdcycle 数据）、
-│                                   #   commit trace、difftest cosim 日志
+├── logs/
+│   ├── stage1/                     # 阶段1 hello 运行日志
+│   ├── stage2/                     # vdot-test / fused 测试日志
+│   └── stage3/                     # cosim / baseline / commit trace 日志
 ├── screenshots/stage3/              # commit trace 写回证据截图
-├── videos/                         # 阶段1 hello 运行录屏
+├── videos/stage1/                   # 阶段1 hello 运行录屏
 └── README.md
 ```
 
@@ -71,6 +75,7 @@ cie2026-Z-riscv-xs/
 - [x] 正数点积测试
 - [x] 负数点积测试
 - [x] 边界值测试（最大值 / 最小值 / 零 / 溢出累加）
+- [x] 探索性补充：Native / Booth / Schoolbook / Karatsuba 四种乘法器的面积-延迟对比（`docs/stage2/2.4`）
 
 ### 阶段三：验证与优化（高难度）
 - [x] 为 NEMU 模拟器新增 `vdot.vv` 指令支持
