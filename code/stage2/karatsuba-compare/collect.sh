@@ -5,7 +5,7 @@
 #   延迟：synth -noabc 写 BLIF，abc print_stats 给出 AIG 关键路径深度 lev
 # 所有设计使用相同源集合与命令，保证公平。
 # ============================================================================
-cd /root/karatsuba-compare || exit 1
+cd "$(dirname "$0")" || exit 1
 SRC="rtl/mul_pkg.sv rtl/mul_booth.sv rtl/mul_school16.sv rtl/mul_kar16.sv rtl/mul_school32.sv rtl/mul_kar32.sv rtl/tops.sv"
 TOPS="TopNative16 TopBooth16 MulSchool16 MulKar16 TopNative32 TopBooth32 MulSchool32 MulKar32"
 for TOP in $TOPS; do
