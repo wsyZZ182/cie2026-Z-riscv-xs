@@ -45,19 +45,20 @@ class BoothMultiplier(n: Int) extends Module {
 
   val pps = (0 until numGroups).map { i =>
     val bits  = bExt(2 * i + 2, 2 * i)
-    val isNeg = bits === "b100".U || bits === "b101".U || bits === "b110".U
-    val raw = MuxLookup(bits, 0.S((w + 1).W))(Seq(
-      "b000".U -> 0.S((w + 1).W),
-      "b001".U -> aWide.pad(w + 1),
-      "b010".U -> aWide.pad(w + 1),
-      "b011".U -> a2,
-      "b100".U -> (~a2).asSInt,                       // -2a 取反，待修正
-      "b101".U -> (~aWide.pad(w + 1)).asSInt,          // -a  取反，待修正
-      "b110".U -> (~aWide.pad(w + 1)).asSInt,
-      "b111".U -> 0.S((w + 1).W)
+        val raw = MuxLookup(bits, 0.S((w + 2).W))(Seq(
+      "b000".U -> 0.S((w + 2).W),
+      "b001".U -> aWide.pad(w + 2),
+      "b010".U -> aWide.pad(w + 2),
+      "b011".U -> a2.pad(w + 2),
+      "b100".U -> (~a2.pad(w + 1) +& 1.S(2.W)).asSInt,    // -2a：取反 + 1，完整补码取负
+      "b101".U -> (~aWide.pad(w + 1) +& 1.S(2.W)).asSInt,  // -a ：取反 + 1，完整补码取负
+      "b110".U -> (~aWide.pad(w + 1) +& 1.S(2.W)).asSInt,
+      "b111".U -> 0.S((w + 2).W)
     ))
     // 负项 +1 完成补码取负；再按组号左移 2i 位
-    (raw +& Mux(isNeg, 1.S(1.W), 0.S(1.W))) << (2 * i)
+    // 负项已在 raw 内以“取反 + 1”完成补码取负，不再用 Mux(isNeg, 1, 0) 追加修正：
+    // firtool 1.62.1 会把该 Mux 修正展开成按位全 1（= -1），导致每个负部分积恒少 2。
+    raw << (2 * i)
   }
 
   io.product := pps.reduce(_ +& _)(2 * n - 1, 0).asSInt
