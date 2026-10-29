@@ -1,0 +1,25 @@
+
+15. Printing statistics.
+
+=== BWFastTop ===
+
+        +----------Local Count, excluding submodules.
+        | 
+    11579 wires
+    14110 wire bits
+      313 public wires
+     2805 public wire bits
+       17 ports
+      363 port bits
+    12076 cells
+     4477   $_AND_
+      618   $_DFFE_PP_
+      517   $_MUX_
+     1405   $_NOT_
+     2466   $_OR_
+        1   $_SDFFE_PP0P_
+        2   $_SDFF_PP0_
+     1456   $_XNOR_
+     1133   $_XOR_
+        1   $scopeinfo
+

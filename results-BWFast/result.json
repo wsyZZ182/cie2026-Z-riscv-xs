@@ -1,0 +1,11 @@
+{
+  "id": "K07",
+  "status": "PASS_RTL_GENERIC",
+  "sta_status": "NOT_RUN_NO_LIBRARY",
+  "checks": 263812,
+  "rtl_sha256": "6860564cb5097b417eecc8467036290878c7dd1ac09d4c967d91eec3cf58799d",
+  "identical_rtl_to": "",
+  "reg_bits": 621,
+  "comb_cells": 11454,
+  "depth": 65
+}

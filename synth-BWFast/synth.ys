@@ -1,0 +1,17 @@
+read_verilog -sv "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/generated/SharedBWFrontend.sv" "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/generated/BWFastTop.sv"
+hierarchy -top BWFastTop
+flatten
+proc
+opt
+fsm
+opt
+memory
+opt
+techmap
+opt
+abc -g AND,OR,XOR,XNOR,MUX
+opt -fast
+tee -o "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/stat.txt" stat
+tee -o "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/ltp.txt" ltp -noff
+write_json "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/netlist.json"
+write_verilog -noattr "/home/gingk/bwfast_batch24/bw_batch24/batch_results/K07/netlist.v"

@@ -1,0 +1,2 @@
+SharedBWFrontend.sv
+BWFastTop.sv
