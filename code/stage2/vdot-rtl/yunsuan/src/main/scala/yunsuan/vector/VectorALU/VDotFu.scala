@@ -6,6 +6,7 @@ import yunsuan.vector._
 import yunsuan.vector.alu.VAluOpcode._
 import yunsuan.vector.alu.VSew._
 import yunsuan.vector.vdot.VDotCore
+import _root_.vdot.BWFastTop
 
 // ============================================================================
 // VDotFu：vdot.vv 归约执行模块（挂载在 VIAlu 内，与 Reduction / VMask 并列）
@@ -97,8 +98,43 @@ class VDotFu extends Module {
   core.io.sew   := vsew
   core.io.vl    := vl
 
-  private val dotResult = core.io.result
-  private val dotSat    = core.io.vxsat
+  // ---- e8 走 K07（BWFastTop 单拍内核），e16/e32 走原 VDotCore（Phase 1 过渡）----
+  // K07 E8：fire 沿锁存 outBits -> 下一拍 valid，与 VIAlu S2 选通同构，零握手改动。
+  // 只使能 e8（vsew===0 才 fire），避免 K07 的 E16 四拍状态机在 Phase 1 被触发。
+  // vxsat：K07 不产生；NEMU 在 MinimalConfig 下同样不写 vcsr（keep difftest consistent）。
+  // ---- K07 输入：当前指令原始输入 + 即时 inactive 清零 ----
+  // 注意：vs1_r/vsew 等锁存值在 fire 拍仍是上一条指令（Reg 在沿才更新），
+  // 若接锁存值，K07 在 fire 沿捕获到的会是上一条指令的数据（错位）。
+  // 因此 K07 直接取 io.in.bits（当前指令），并即时按 vl/vm/mask 清零 inactive 元素。
+  private val vs1c8_now = Wire(Vec(16, UInt(8.W)))
+  private val vs2c8_now = Wire(Vec(16, UInt(8.W)))
+  for (i <- 0 until 16) {
+    val act = (i.U < io.in.bits.info.vl) && (io.in.bits.info.vm || io.in.bits.mask(i))
+    vs1c8_now(i) := Mux(act, io.in.bits.vs1(8 * i + 7, 8 * i), 0.U(8.W))
+    vs2c8_now(i) := Mux(act, io.in.bits.vs2(8 * i + 7, 8 * i), 0.U(8.W))
+  }
+
+  private val bwfast = Module(new BWFastTop)
+  bwfast.io.in.valid        := fire && io.in.bits.vdType(1, 0) === 0.U
+  bwfast.io.in.bits.vs1     := vs1c8_now.asUInt
+  bwfast.io.in.bits.vs2     := vs2c8_now.asUInt
+  bwfast.io.in.bits.vdOld   := io.in.bits.old_vd(31, 0)
+  bwfast.io.in.bits.a_signed := true.B
+  bwfast.io.in.bits.b_signed := true.B
+  bwfast.io.in.bits.sew     := io.in.bits.vdType(1, 0)
+  bwfast.io.in.bits.mask    := "hffff".U(16.W)  // inactive 输入已清零为 0，K07 全使能
+  bwfast.io.in.bits.tag     := 0.U(8.W)
+  bwfast.io.out.ready       := true.B      // 香山 out 无 ready：恒真 -> valid 一拍即清，II=1
+  bwfast.io.flush           := false.B
+
+  private val dotResult = MuxLookup(vsew, Cat(0.U(96.W), bwfast.io.out.bits.result))(Seq(
+    0.U -> Cat(0.U(96.W), bwfast.io.out.bits.result),
+    1.U -> core.io.result,
+    2.U -> core.io.result))
+  private val dotSat    = MuxLookup(vsew, false.B)(Seq(
+    0.U -> false.B,
+    1.U -> core.io.vxsat,
+    2.U -> core.io.vxsat))
 
   // ---- tail 处理（对齐 Reduction 的 red_vd_tail 范式）----
   // slotMask：固定低 32 位（vdot 结果 32 位，放 vd 低 32 位，跨 SEW 槽）
