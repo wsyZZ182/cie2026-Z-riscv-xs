@@ -57,7 +57,7 @@
 | 组合单元数 | 11,454 | 通用门映射，不是标准单元面积 |
 | 寄存器位数 | 621 | 依该次综合统计 |
 | 最长门层数 | 65 | 全模块组合路径指标，不能直接称 E8 延迟 |
-| STA | NOT_RUN_NO_LIBRARY | 不能宣称时序收敛 |
+| STA | TT/SS 已测（单元级，ASAP7 代理） | 未收敛，不可称签核；双模式 K07 整核仍待测 |
 
 证据：`BWFast_BATCH_RESULTS.zip` 中 `batch_results/K07/result.json`、`sim_seed1.log`～`sim_seed20.log`、`synth.log`、`stat.txt`、`ltp.txt`。本地审计摘录见 [K07证据](audit-20261029/historical-k07-evidence.json) 和 [20 seeds核对](audit-20261029/historical-k07-seeds.json)。
 

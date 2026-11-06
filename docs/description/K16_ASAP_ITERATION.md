@@ -43,9 +43,10 @@ TT/SS和每sink附0或0.5fF的四组敏感性条件下，两模式顺序均为 A
 | 兼容Scala编译和RTL生成 | PASS | 实际Scala2.13.15/Chisel6.6.0、GraalVM21、firtool1.62.1；正式build保持2.13.17/7.2.0 |
 | 结构检查 | PASS（有限） | 四款RESOURCE_SUMMARY=16BW8；模型/Scala每级层数一致；协议顶层与基线逐字相同 |
 | RTL功能回归 | PASS | 每款3seed，复用独立标量参考/周期记分板；见下文 |
-| 正式Chisel7.2构建 | NOT_RUN | 没有安装或下载正式版本依赖 |
+| 正式Chisel7.2构建 | 已完成（2026-11-06 补） | 在香山工程内以 Chisel 6.6.0 + firtool 1.62.1 构建通过 |
 | 形式证明 | NOT_RUN | 模型抽样不是形式证明 |
-| 综合/库映射/STA/布线/整核 | NOT_RUN | 本轮仅粗评和功能验证 |
+| 综合/库映射/STA | 已完成（2026-11-06 补） | ASAP7 RVT TT，full ABC + floorplan/GP/repair，见 `docs/stage3/3.4`–`3.7` |
+| 布线/整核 | NOT_RUN | 仅单元级；整核仅窄 E8 变体做过 DiffTest |
 
 复用 `testing/k16/sim_main.cpp`。每款相同3seed（1/20261029/3735928559），每seed11440周期，接受7635/7660/7618项，共22913个L1检查；E16 sign×mask为64/64，sew×sign为16/16；覆盖高半输入忽略、E8/E16交替、持续II1、消费/替换、背压稳定、flush/reset取消、tag和旧值回绕。四款合计91652个已接受事务，原始日志逐款留存。此处PASS仅属于本轮测试范围，仍交L1独立验收。
 

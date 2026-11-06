@@ -35,6 +35,36 @@ class VDotFu extends Module {
 
   // ---- S1 输入锁存（对齐 Reduction 的 fire_reg_s1 / old_vd_reg_s1 范式）----
   private val fire     = io.in.valid
+
+  // K07 E8 fallback: capture the current instruction on its valid edge.
+  // E16/E32 remain on the original VDotCore path until an eight-pair unit is
+  // fully integrated and verified. Inactive/masked elements are zeroed here;
+  // the standalone K07 module then sees all 16 E8 lanes enabled.
+  private val k07 = Module(new BWFastTop)
+  private val k07E8Fire = io.in.valid && (io.in.bits.vdType(1, 0) === 0.U)
+  private val k07Vs1 = VecInit((0 until 16).map { i =>
+    val active = (i.U < io.in.bits.info.vl) && (io.in.bits.info.vm || io.in.bits.mask(i))
+    Mux(active, io.in.bits.vs1(8 * i + 7, 8 * i), 0.U(8.W))
+  }).asUInt
+  private val k07Vs2 = VecInit((0 until 16).map { i =>
+    val active = (i.U < io.in.bits.info.vl) && (io.in.bits.info.vm || io.in.bits.mask(i))
+    Mux(active, io.in.bits.vs2(8 * i + 7, 8 * i), 0.U(8.W))
+  }).asUInt
+  k07.io.in.valid := k07E8Fire
+  k07.io.in.bits.vs1 := k07Vs1
+  k07.io.in.bits.vs2 := k07Vs2
+  k07.io.in.bits.vdOld := io.in.bits.old_vd(31, 0)
+  k07.io.in.bits.a_signed := true.B
+  k07.io.in.bits.b_signed := true.B
+  k07.io.in.bits.sew := 0.U
+  k07.io.in.bits.mask := "hffff".U
+  k07.io.in.bits.tag := 0.U
+  k07.io.out.ready := true.B
+  k07.io.flush := false.B
+  // K07 consumes a request on the fire edge and replaces its output register.
+  // VIAlu selects data with opcodeS2 (two valid stages), so capture the old
+  // K07 response on the following edge before a back-to-back request replaces it.
+  private val k07ResultS2 = RegEnable(k07.io.out.bits.result, k07.io.out.valid)
   private val vm_r     = RegEnable(io.in.bits.info.vm,     false.B, fire)
   private val ta_r     = RegEnable(io.in.bits.info.ta,     false.B, fire)
   private val vl_r     = RegEnable(io.in.bits.info.vl,     0.U,     fire)
@@ -98,53 +128,37 @@ class VDotFu extends Module {
   core.io.sew   := vsew
   core.io.vl    := vl
 
-  // ---- e8 走 K07（BWFastTop 单拍内核），e16/e32 走原 VDotCore（Phase 1 过渡）----
-  // K07 E8：fire 沿锁存 outBits -> 下一拍 valid，与 VIAlu S2 选通同构，零握手改动。
-  // 只使能 e8（vsew===0 才 fire），避免 K07 的 E16 四拍状态机在 Phase 1 被触发。
-  // vxsat：K07 不产生；NEMU 在 MinimalConfig 下同样不写 vcsr（keep difftest consistent）。
-  // ---- K07 输入：当前指令原始输入 + 即时 inactive 清零 ----
-  // 注意：vs1_r/vsew 等锁存值在 fire 拍仍是上一条指令（Reg 在沿才更新），
-  // 若接锁存值，K07 在 fire 沿捕获到的会是上一条指令的数据（错位）。
-  // 因此 K07 直接取 io.in.bits（当前指令），并即时按 vl/vm/mask 清零 inactive 元素。
-  private val vs1c8_now = Wire(Vec(16, UInt(8.W)))
-  private val vs2c8_now = Wire(Vec(16, UInt(8.W)))
-  for (i <- 0 until 16) {
-    val act = (i.U < io.in.bits.info.vl) && (io.in.bits.info.vm || io.in.bits.mask(i))
-    vs1c8_now(i) := Mux(act, io.in.bits.vs1(8 * i + 7, 8 * i), 0.U(8.W))
-    vs2c8_now(i) := Mux(act, io.in.bits.vs2(8 * i + 7, 8 * i), 0.U(8.W))
-  }
+  // ---- S2: align with the K07 response and VIAlu opcodeS2 ----
+  // K07 drives its E8 result one cycle after the request (in.fire sets
+  // outBits/valid), while VIAlu selects the output with opcodeS2 (two valid
+  // stages).  Keeping old_vd/ta/vl/vsew only in S1 makes back-to-back vdot
+  // instructions combine the first result with the second instruction's old
+  // vd: the low 32 bits are right but the upper 96 bits are wrong.
+  private val validS1      = RegNext(fire, false.B)
+  private val coreResultS2 = RegEnable(core.io.result, validS1)
+  private val coreSatS2    = RegEnable(core.io.vxsat,  validS1)
+  private val oldVdS2      = RegEnable(oldVd_r,  validS1)
+  private val taS2         = RegEnable(ta_r,     validS1)
+  private val vlS2         = RegEnable(vl_r,     validS1)
+  private val vstartS2     = RegEnable(vstart_r, validS1)
+  private val vsewS2       = RegEnable(vsew_r,   validS1)
 
-  private val bwfast = Module(new BWFastTop)
-  bwfast.io.in.valid        := fire && io.in.bits.vdType(1, 0) === 0.U
-  bwfast.io.in.bits.vs1     := vs1c8_now.asUInt
-  bwfast.io.in.bits.vs2     := vs2c8_now.asUInt
-  bwfast.io.in.bits.vdOld   := io.in.bits.old_vd(31, 0)
-  bwfast.io.in.bits.a_signed := true.B
-  bwfast.io.in.bits.b_signed := true.B
-  bwfast.io.in.bits.sew     := io.in.bits.vdType(1, 0)
-  bwfast.io.in.bits.mask    := "hffff".U(16.W)  // inactive 输入已清零为 0，K07 全使能
-  bwfast.io.in.bits.tag     := 0.U(8.W)
-  bwfast.io.out.ready       := true.B      // 香山 out 无 ready：恒真 -> valid 一拍即清，II=1
-  bwfast.io.flush           := false.B
-
-  private val dotResult = MuxLookup(vsew, Cat(0.U(96.W), bwfast.io.out.bits.result))(Seq(
-    0.U -> Cat(0.U(96.W), bwfast.io.out.bits.result),
-    1.U -> core.io.result,
-    2.U -> core.io.result))
-  private val dotSat    = MuxLookup(vsew, false.B)(Seq(
-    0.U -> false.B,
-    1.U -> core.io.vxsat,
-    2.U -> core.io.vxsat))
+  private val execS2 = vstartS2 < vlS2
+  private val dotResult = Mux(vsewS2 === 0.U,
+    Cat(0.U(96.W), k07ResultS2), coreResultS2)
+  // The current VIPU configuration does not commit vxsat to the CSR; K07
+  // itself has no saturation output. Keep native E16/E32 saturation signal.
+  private val dotSat = Mux(vsewS2 === 0.U, false.B, coreSatS2)
 
   // ---- tail 处理（对齐 Reduction 的 red_vd_tail 范式）----
   // slotMask：固定低 32 位（vdot 结果 32 位，放 vd 低 32 位，跨 SEW 槽）
   // 修正：原按 SEW 截断（e8 只留 8 位），导致 -136/2032 被截成 120/240
   private val slotMask = "h000000000000000000000000ffffffff".U(128.W)
-  private val redVd   = Mux(exec, dotResult, oldVd)      // vstart>=vl 不执行
-  private val tailVd  = (oldVd & ~slotMask) | (redVd & slotMask)   // ta=0：保留旧值
-  private val tailOne = (~slotMask) | (redVd & slotMask)           // ta=1：其余槽全 1
-  private val tailOut = Mux(vl === 0.U, oldVd, Mux(ta, tailOne, tailVd))
+  private val redVd   = Mux(execS2, dotResult, oldVdS2)      // vstart>=vl 不执行
+  private val tailVd  = (oldVdS2 & ~slotMask) | (redVd & slotMask)   // ta=0：保留旧值
+  private val tailOne = (~slotMask) | (redVd & slotMask)             // ta=1：其余槽全 1
+  private val tailOut = Mux(vlS2 === 0.U, oldVdS2, Mux(taS2, tailOne, tailVd))
 
   io.out.vd    := tailOut
-  io.out.vxsat := dotSat && exec
+  io.out.vxsat := dotSat && execS2
 }

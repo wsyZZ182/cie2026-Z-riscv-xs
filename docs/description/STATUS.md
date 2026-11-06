@@ -2,6 +2,8 @@
 
 本轮完成只读源码/历史包检查、历史对话恢复和规划文档建设；未执行功能测试、编译、综合或STA，未修改核心RTL/生成器/旧产物。下一步等待用户批准。详见 TASK_PLAN.md 与 TEST_FLOW.md。
 
+> **2026-11-06 更新：本节状态已过时。** 此后已完成：13 项整核 DiffTest（GOOD TRAP，17209 instr，0 失配）、6 次全核 RTL 生成、多轮 ASAP7 映射与 STA、K07 双模式时序测量。当前状态见 `K07_交接包修正_20261106.md` 与 `docs/stage3/3.7-K07双模式时序修正.md`。
+
 ## 已确认的三条工程线
 
 | 工程 | 实际可读资产 | 已知状态 |
@@ -18,6 +20,8 @@
 本地六变体每个manifest记录2200组Boolean DAG检查；其源哈希均与当前生成器相符，manifest所列产物哈希全部匹配。当前生成器SHA256为 0c9bf6d8f20346fe797b17edaf219dfe7bb7a01500baa7447ee699ae07d64a6e。RTL仿真/形式/Chisel仍not_run，综合/STA为skipped。历史聊天工具输出有14项Python测试OK；本轮没有重跑。
 
 BWFast历史summary有24行PASS_RTL_GENERIC。K07 result.json记录263812 checks、11454组合单元、621寄存器位、65层，STA=NOT_RUN_NO_LIBRARY。原始20份sim_seed日志均可读取，含RESULT: PASS、errors=0及覆盖信息；原始综合synth.log/stat/ltp和工具版本也已保存。数字属于历史归档运行，不能称作本轮复现；65层是通用网表最长路径深度，不是65ps，也不保证就是独立E8路径。
+
+> **2026-11-06 更新：`sta_status` 已不再是 NOT_RUN。** K07（K07 配置，`BWFast.scala` 哈希 `ccd16edf…`）在统一 ASAP7 流程下实测 **2694.5 ps / 150.1 FO4 / 1086 µm²**（最慢路径起点 `state[1]`，属 E16 状态机控制路径）。`depth: 65` 仍只是抽象门深度，不可与 ps 混用。
 
 历史K07 RTL SHA256：6860564cb5097b417eecc8467036290878c7dd1ac09d4c967d91eec3cf58799d（归档结果记录，正式复现还需关联实际RTL文件重算）。日志环境路径为 /home/gingk/bwfast_batch24/bw_batch24；版本日志Yosys0.58、Verilator5.048、Oracle GraalVM21.0.12。另一历史ASAP7叙述中的Yosys0.70/Java17不可混为同一环境。
 

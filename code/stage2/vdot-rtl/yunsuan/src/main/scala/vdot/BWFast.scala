@@ -289,6 +289,7 @@ class BWFastTop extends Module {
 }
 object EmitBWFast extends App {
   // firtoolOpts 说明：
+  //  --disable-layers=Verification : 否则 firtool 会额外写 verification/Assert|Assume|Cover
   //      子目录，在无法映射该路径的 Windows 代码页上直接失败；这些文件只是断言脚手架，
   //      不改变综合出的数据通路。
   //  --lowering-options=... : 让输出更贴近可综合子集（不开 always 块内局部变量、
@@ -297,5 +298,6 @@ object EmitBWFast extends App {
   _root_.circt.stage.ChiselStage.emitSystemVerilogFile(new BWFastTop,
     args=Array("--target-dir",args.headOption.getOrElse("generated")),
     firtoolOpts=Array("-disable-all-randomization","-strip-debug-info",
+      "--disable-layers=Verification",
       "--lowering-options=disallowLocalVariables,disallowPackedArrays,disallowExpressionInliningInPorts"))
 }
