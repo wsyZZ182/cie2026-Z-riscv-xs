@@ -42,7 +42,7 @@ assert(!pass2Conflict,
 - 13 项整核 DiffTest：**13/13 PASS**，`HIT GOOD TRAP`，`instrCnt = 17209 / cycleCnt = 63027`
 - E16 正数 36（原 10）、E16 负数 −36（原 −10）
 - 背靠背 3 项 PASS
-- 面积增量 **+76.92 µm²**（ASAP7 RVT TT，K07 与 VDotCore 作黑盒只综 glue）
+- 面积增量 **+106.49 µm²**（整块 VDotFu 4152.92 → 4259.42 µm²，**+2.56%**；ASAP7 RVT TT 实测）
 
 完整证据：`xs_cycle_calibration/runs/k07_e16_twopass_20261107/`（24 项含 SHA256SUMS）。
 
