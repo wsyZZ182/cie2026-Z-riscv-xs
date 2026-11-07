@@ -10,7 +10,7 @@
 
 点积（Dot Product）是深度学习模型的核心计算内核，在推荐系统、大语言模型（LLM）等 AI 应用中通常占据总计算量的 60%–80%。本项目在国产开源高性能 RISC-V 处理器「香山」昆明湖 V2 平台上，**新增一条自定义向量点积指令 `vdot.vv`（SEW=8, VLEN=128）**，通过整模块嵌入独立设计的高速点积单元 **K07**（BWFast 24 配置之一，计数树压缩方案），在香山向量执行单元（VIPU/VIAlu）中以极小面积开销换取点积吞吐提升，满足边缘 LLM 推理对高性能、低功耗、低成本的需求。
 
-**设计演进**：初版基于香山原生 VDotCore（Radix-4 Booth 8×8 乘法器 + CSA 归约）实现并修复 Booth 符号补偿 bug；随后在独立模块工程中构建 **48 个候选实现**（Booth/Karatsuba/CSA 计数树/字节级流水等），统一综合比较后选定 **K07**（S02+S03+S04+S06+S07）作为最终 vdot 加速单元，**E8 走 K07 计数树点积（单拍、II=1），E16/E32 回退香山原生乘法器路径**，并完成整核 DiffTest 700 用例验证。
+**设计演进**：初版基于香山原生 VDotCore（Radix-4 Booth 8×8 乘法器 + CSA 归约）实现并修复 Booth 符号补偿 bug；随后在独立模块工程中构建 **48 个候选实现**（Booth/Karatsuba/CSA 计数树/字节级流水等），统一综合比较后选定 **K07**（S02+S03+S04+S06+S07）作为最终 vdot 加速单元，**E8 单拍走 K07 计数树点积（II=1），E16 由 K07 拆两笔完成 8 对，E32 回退香山原生乘法器路径**，并完成交付版双模式整核 DiffTest 13 项（13/13 PASS）与 BWFast 版 700 用例回归。
 
 ## 🏆 赛题信息
 
@@ -54,7 +54,8 @@ cie2026-Z-riscv-xs/
 │   ├── stage1/                     # 1.3 向量加法执行过程文档（.docx）
 │   ├── stage2/                     # 2.1 设计文档（v1.4，含 §15 K07 方案）/ 2.2 RTL 说明 /
 │   │                               #   2.3 功能验证报告 / 2.4 Karatsuba 乘法器算法对比
-│   └── stage3/                     # 3.1 NEMU+协同仿真 / 3.2 基线验证 / 3.3 延迟加速比分析
+│   └── stage3/                     # 3.1–3.3 + 3.4 ASAP7 时序 / 3.5 E8 修复 / 3.6 统一口径复测 /
+│                                   #   3.7 双模式时序 / 3.8 整核 DiffTest / 3.9 E16 两笔实现
 ├── archive/BWFast_20261030/docs-BWFast/                    # K07 文档（README / MODIFICATIONS / PHASE1-VERIFY）
 ├── logs/                           # 各阶段运行日志
 ├── screenshots/stage3/             # commit trace 写回证据截图
@@ -75,11 +76,12 @@ cie2026-Z-riscv-xs/
 - ✅ `vdot.vv` 设计文档（v1.4：指令语义、微架构、数据通路、**§15 K07 最终方案**）
 - ✅ 原版 `vdot.vv` RTL 实现（Chisel，VDotCore Booth 修复版，700 用例整核 DiffTest 通过）
 - ✅ **K07 高速点积单元**（BWFast 24 配置之一）：模块级验证（20 seeds + SAT 证明）+ 整核接入（Phase 0/1）
-- ✅ **K07 整核 DiffTest：700 用例全部通过**（E8 走 K07 / E16/E32 回退香山原生，17209 条指令全提交，无 mismatch/ABORT）
+- ✅ **BWFast 版整核 DiffTest：700 用例全部通过**（E8 走 K07 / E16/E32 回退原生，17209 条指令全提交，无 mismatch/ABORT）
+- ✅ **交付版双模式 K07 整核 DiffTest：13/13 PASS**（E8 单笔 + E16 两笔，17209 指令 / 63027 周期，零失配，`HIT GOOD TRAP`；见 [`3.8`](docs/stage3/3.8-K07双模式整核DiffTest.md)、[`3.9`](docs/stage3/3.9-K07-E16两笔实现.md)）
 - ✅ 正数 / 负数 / 边界值（127 / -128 / 0 / 溢出累加 / vl=0/1/4）测试
 - ✅ 探索性补充：Native / Booth / Schoolbook / Karatsuba 四种乘法器面积-延迟对比（`docs/stage2/2.4`）
-- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/synth-BWFast`）：统一 Yosys 通用门级综合，K07 胜出并定为最终设计
-- ⬜ Phase 2（E16 四拍慢单元接入整核，可选）：未启动
+- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/synth-BWFast`）：统一 Yosys 通用门级综合，K07 胜出；**最终交付为双模式 `K07.sv`**（面积 671.18 µm²、reg→reg 动态 2128.0 ps，见 [`3.7`](docs/stage3/3.7-K07双模式时序修正.md)）
+- ✅ Phase 2（E16 接入整核）：**已用两笔方案实现**（非遗留的四拍慢单元）——第 1 笔算元素 0–3，第 2 笔算元素 4–7 并回灌首笔结果，单次架构写回；`VIAlu`/`VipuCfg` 未改，面积 +106.49 µm²（+2.56%），详见 [`3.9`](docs/stage3/3.9-K07-E16两笔实现.md)
 
 ### 阶段三：验证与优化（高难度）
 - ✅ 为 NEMU 模拟器新增 `vdot.vv` 指令支持（不写 vxsat/vcsr，与 RTL 口径一致）
@@ -110,10 +112,11 @@ cie2026-Z-riscv-xs/
 - **指令编码**：funct6=`000100` + funct3=`011` + opcode=`1010111`（示例 `0x12103157` = vdot.vv v2,v0,v1）。funct3=011 为 OPMVV 区空闲组合，避开与 `vminu.vx` 的冲突。
 - **最终微架构（K07，v1.4 起）**：
   - **E8**：16 对 8 位元素点积，BW8 部分积生成器 + **组内 carry-save 两行 + 四组等权合并进计数树**（S02 7:3 / S03 15:4 精确压缩 + S04 有界前瞻调度），单拍、II=1；**替代原 Booth 8×8 乘法器**。
-  - **E16/E32**：整核中**回退香山原生乘法器路径**（§7）；K07 自身 E16 四拍路径（schoolbook 复用 BW8）待 Phase 2 接入。
+  - **E16**：K07 拆两笔完成 8 对——第 1 笔算元素 0–3（低 64 位、`mask[3:0]`、`vdOld=old_vd`），第 2 笔算元素 4–7（高 64 位下移、`mask[7:4]`、`vdOld=第 1 笔结果`），仅第 2 笔写回；两笔都落在原 `CertainLatency(2)` 窗口内，`VIAlu`/`VipuCfg` 无需改动。
+  - **E32**：整核中**回退香山原生乘法器路径**（§7）；K07 无 e32 模式。
   - **饱和/vxsat**：K07 不产生 vxsat、不实现饱和（模 2³²）；与 NEMU vdot（不写 vcsr）口径一致。
   - 结构指标（Yosys 通用门级，无工艺库）：comb 11,454 / reg 621 / 逻辑深度 65。
-- **接入方式**：在香山向量执行单元注册自定义 opcode（`VipuType.vdot_vv`），`VDotFu.scala` 整模块嵌入 `BWFastTop`（K07），E8 输出分流走 K07、E16/E32 走原 `VDotCore`；K07 输入取**当前指令原始输入**（关键时序修复：规避 fire 沿捕获上一条指令锁存值的错位）。
+- **接入方式**：在香山向量执行单元注册自定义 opcode（`VipuType.vdot_vv`），`VDotFu.scala` 整模块嵌入 `BWFastTop`（K07），E8/E16 走 K07（E16 为两笔）、E32 走原 `VDotCore`；K07 输入取**当前指令原始输入**（关键时序修复：规避 fire 沿捕获上一条指令锁存值的错位）。
 - **设计文档**：详见 [`docs/stage2/2.1-vdot-vv-设计文档.md`](docs/stage2/2.1-vdot-vv-设计文档.md)（§15）与 [`archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md`](archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md)。
 
 ## 🧪 测试与验证
@@ -123,7 +126,8 @@ cie2026-Z-riscv-xs/
 | 正数点积 | 全正数输入 | ✅ 通过 |
 | 负数点积 | 含负数输入（验证符号扩展） | ✅ 通过 |
 | 边界值 | 127 / -128 / 0 / 溢出累加 / vl=0/1/4 | ✅ 通过 |
-| 整核协同仿真 | NEMU vs RTL 逐指令比对（Difftest，700 用例） | ✅ 一致（17209 指令全提交，无 mismatch/ABORT） |
+| 整核协同仿真（BWFast 版） | NEMU vs RTL 逐指令比对（Difftest，700 用例） | ✅ 一致（17209 指令全提交，无 mismatch/ABORT） |
+| 整核协同仿真（交付版 K07） | NEMU vs RTL，13 项（e8/e16/e32 正负数、边界、vl、溢出） | ✅ 13/13，17209 指令 / 63027 周期，零失配 |
 | K07 模块级 | 20 seeds RTL 仿真 + 7/15/31 计数器 SAT 证明 | ✅ 通过（PASS_RTL_GENERIC） |
 | 48 版综合比较 | 统一 Yosys 通用门级综合 | ✅ K07 胜出（结果归档 archive/BWFast_20261030/synth-BWFast/） |
 
