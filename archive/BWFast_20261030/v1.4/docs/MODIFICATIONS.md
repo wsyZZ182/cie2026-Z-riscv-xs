@@ -1,7 +1,6 @@
 # MODIFICATIONS — BWFast Batch24 frozen single-round run
 
 Date: 2026-10-28 (Asia/Shanghai)
-Operator: batch monitor / troubleshooter
 
 ## Verdict: NO code, script, RTL, or configuration modification was required.
 

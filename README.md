@@ -45,18 +45,16 @@ cie2026-Z-riscv-xs/
 │       ├── nemu-vdot/              # 阶段3.1：NEMU 扩展（decode.h + vcompute.h + .patch）
 │       ├── vdot-baseline/          # 阶段3.2：基线程序（标准 RVV 组合实现同 13 用例）
 │       └── bench/                  # 阶段3.3：性能测试 per-kernel 源码（12 个 .c + Makefile）
-├── archive/BWFast_20261030/src-BWFast/                     # K07 源码（BWFast.scala / BatchConfig.scala / CounterProof.scala）
-├── archive/BWFast_20261030/rtl-BWFast/                     # K07 生成 RTL（BWFastTop.sv / SharedBWFrontend.sv）
-├── archive/BWFast_20261030/synth-BWFast/                   # K07 Yosys 通用门级综合（结构指标，无工艺库）
-├── archive/BWFast_20261030/sim-BWFast/                     # K07 模块级仿真（20 seeds 回归）
-├── archive/BWFast_20261030/results-BWFast/                 # K07 结果（result.json：comb 11454 / reg 621 / depth 65）
+├── archive/BWFast_20261030/v1.4/src/                     # K07 源码（BWFast.scala / BatchConfig.scala / CounterProof.scala）
+├── archive/BWFast_20261030/v1.4/rtl/                     # K07 生成 RTL（BWFastTop.sv / SharedBWFrontend.sv）
+├── archive/BWFast_20261030/v1.4/synth/                   # K07 Yosys 通用门级综合（结构指标，无工艺库）
+├── archive/BWFast_20261030/v1.4/results/                 # K07 结果（result.json：comb 11454 / reg 621 / depth 65）
 ├── docs/
 │   ├── stage1/                     # 1.3 向量加法执行过程文档（.docx）
 │   ├── stage2/                     # 2.1 设计文档（v1.4，K07 方案已并入 §7–§13）/ 2.2 RTL 说明 /
 │   │                               #   2.3 功能验证报告 / 2.4 Karatsuba 乘法器算法对比
 │   └── stage3/                     # 3.1 NEMU 扩展与协同仿真 / 3.2 基线功能 / 3.3 加速比与时序面积
-│                                   #   旧版迭代记录归档于 archive/BWFast_20261030/docs-stage3-legacy/
-├── archive/BWFast_20261030/docs-BWFast/                    # K07 文档（README / MODIFICATIONS / PHASE1-VERIFY）
+├── archive/BWFast_20261030/v1.4/docs/                    # K07 文档（README / MODIFICATIONS / PHASE1-VERIFY）
 ├── logs/                           # 各阶段运行日志
 ├── screenshots/stage3/             # commit trace 写回证据截图
 ├── videos/
@@ -82,7 +80,7 @@ cie2026-Z-riscv-xs/
 - ✅ **交付版双模式 K07 整核 DiffTest：13/13 PASS**（E8 单笔 + E16 两笔，17209 指令 / 63027 周期，零失配，`HIT GOOD TRAP`；见 [`3.1`](docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md)）
 - ✅ 正数 / 负数 / 边界值（127 / -128 / 0 / 溢出累加 / vl=0/1/4）测试
 - ✅ 探索性补充：Native / Booth / Schoolbook / Karatsuba 四种乘法器面积-延迟对比（`docs/stage2/2.4`）
-- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/synth-BWFast`）：统一 Yosys 通用门级综合，K07 胜出；**最终交付为双模式 `K07.sv`**（面积 671.18 µm²、reg→reg 动态 2128.0 ps，见 [`3.3`](docs/stage3/3.3-延迟加速比分析.md)）
+- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/v1.4/synth`）：统一 Yosys 通用门级综合，K07 胜出；**最终交付为双模式 `K07.sv`**（面积 671.18 µm²、reg→reg 动态 2128.0 ps，见 [`3.3`](docs/stage3/3.3-延迟加速比分析.md)）
 - ✅ Phase 2（E16 接入整核）：**已用两笔方案实现**（非遗留的四拍慢单元）——第 1 笔算元素 0–3，第 2 笔算元素 4–7 并回灌首笔结果，单次架构写回；`VIAlu`/`VipuCfg` 未改，面积 +106.49 µm²（+2.56%），详见 [`3.1`](docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md)
 
 ### 阶段三：验证与优化（高难度）
@@ -119,7 +117,7 @@ cie2026-Z-riscv-xs/
   - **饱和/vxsat**：K07 不产生 vxsat、不实现饱和（模 2³²）；与 NEMU vdot（不写 vcsr）口径一致。
   - 结构指标（Yosys 通用门级，无工艺库）：comb 11,454 / reg 621 / 逻辑深度 65。
 - **接入方式**：在香山向量执行单元注册自定义 opcode（`VipuType.vdot_vv`），`VDotFu.scala` 整模块嵌入 `BWFastTop`（K07），E8/E16 走 K07（E16 为两笔）、E32 走原 `VDotCore`；K07 输入取**当前指令原始输入**（关键时序修复：规避 fire 沿捕获上一条指令锁存值的错位）。
-- **设计文档**：详见 [`docs/stage2/2.1-vdot-vv-设计文档.md`](docs/stage2/2.1-vdot-vv-设计文档.md)（§15）与 [`archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md`](archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md)。
+- **设计文档**：详见 [`docs/stage2/2.1-vdot-vv-设计文档.md`](docs/stage2/2.1-vdot-vv-设计文档.md)（§15）与 [`archive/BWFast_20261030/v1.4-final/PHASE1-VERIFY.md`](archive/BWFast_20261030/v1.4-final/PHASE1-VERIFY.md)。
 
 ## 🧪 测试与验证
 
@@ -131,9 +129,9 @@ cie2026-Z-riscv-xs/
 | 整核协同仿真（BWFast 版） | NEMU vs RTL 逐指令比对（Difftest，700 用例） | ✅ 一致（17209 指令全提交，无 mismatch/ABORT） |
 | 整核协同仿真（交付版 K07） | NEMU vs RTL，13 项（e8/e16/e32 正负数、边界、vl、溢出） | ✅ 13/13，17209 指令 / 63027 周期，零失配 |
 | K07 模块级 | 20 seeds RTL 仿真 + 7/15/31 计数器 SAT 证明 | ✅ 通过（PASS_RTL_GENERIC） |
-| 48 版综合比较 | 统一 Yosys 通用门级综合 | ✅ K07 胜出（结果归档 archive/BWFast_20261030/synth-BWFast/） |
+| 48 版综合比较 | 统一 Yosys 通用门级综合 | ✅ K07 胜出（结果归档 archive/BWFast_20261030/v1.4/synth/） |
 
-详细测试报告见 [`docs/stage2/2.3-功能验证报告.md`](docs/stage2/2.3-功能验证报告.md)、[`archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md`](archive/BWFast_20261030/docs-BWFast/PHASE1-VERIFY.md)。
+详细测试报告见 [`docs/stage2/2.3-功能验证报告.md`](docs/stage2/2.3-功能验证报告.md)、[`archive/BWFast_20261030/v1.4-final/PHASE1-VERIFY.md`](archive/BWFast_20261030/v1.4-final/PHASE1-VERIFY.md)。
 
 ## 📊 性能分析（口径说明）
 
