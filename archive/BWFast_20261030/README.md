@@ -14,7 +14,7 @@
 | 面积 | 671.18 µm²（K07Reg 含壳 819.37 µm²） |
 | 时序（reg→reg） | 动态 2128.0 ps / E8 1759.5 ps / E16 1737.0 ps |
 
-口径与对比见仓库根 `docs/stage3/3.7-K07双模式时序修正.md`。本目录 `rtl-BWFast/BWFastTop.sv` 是 10 月窄 E8 版的生成物，已被取代；整核 Chisel 源码（`VDotFu.scala`）当前仍实例化 `BWFastTop`，迁移到 `K07.sv` 属于整核集成工作，不在本归档范围。
+口径与对比见仓库根 `docs/stage3/3.3-延迟加速比分析.md`。本目录 `rtl-BWFast/BWFastTop.sv` 是 10 月窄 E8 版的生成物，已被取代；整核 Chisel 源码（`VDotFu.scala`）当前仍实例化 `BWFastTop`，迁移到 `K07.sv` 属于整核集成工作，不在本归档范围。
 
 ## 内容
 

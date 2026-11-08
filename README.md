@@ -52,10 +52,10 @@ cie2026-Z-riscv-xs/
 ├── archive/BWFast_20261030/results-BWFast/                 # K07 结果（result.json：comb 11454 / reg 621 / depth 65）
 ├── docs/
 │   ├── stage1/                     # 1.3 向量加法执行过程文档（.docx）
-│   ├── stage2/                     # 2.1 设计文档（v1.4，含 §15 K07 方案）/ 2.2 RTL 说明 /
+│   ├── stage2/                     # 2.1 设计文档（v1.4，K07 方案已并入 §7–§13）/ 2.2 RTL 说明 /
 │   │                               #   2.3 功能验证报告 / 2.4 Karatsuba 乘法器算法对比
-│   └── stage3/                     # 3.1–3.3 + 3.4 ASAP7 时序 / 3.5 E8 修复 / 3.6 统一口径复测 /
-│                                   #   3.7 双模式时序 / 3.8 整核 DiffTest / 3.9 E16 两笔实现
+│   └── stage3/                     # 3.1 NEMU 扩展与协同仿真 / 3.2 基线功能 / 3.3 加速比与时序面积
+│                                   #   旧版迭代记录归档于 archive/BWFast_20261030/docs-stage3-legacy/
 ├── archive/BWFast_20261030/docs-BWFast/                    # K07 文档（README / MODIFICATIONS / PHASE1-VERIFY）
 ├── logs/                           # 各阶段运行日志
 ├── screenshots/stage3/             # commit trace 写回证据截图
@@ -77,11 +77,11 @@ cie2026-Z-riscv-xs/
 - ✅ 原版 `vdot.vv` RTL 实现（Chisel，VDotCore Booth 修复版，700 用例整核 DiffTest 通过）
 - ✅ **K07 高速点积单元**（BWFast 24 配置之一）：模块级验证（20 seeds + SAT 证明）+ 整核接入（Phase 0/1）
 - ✅ **BWFast 版整核 DiffTest：700 用例全部通过**（E8 走 K07 / E16/E32 回退原生，17209 条指令全提交，无 mismatch/ABORT）
-- ✅ **交付版双模式 K07 整核 DiffTest：13/13 PASS**（E8 单笔 + E16 两笔，17209 指令 / 63027 周期，零失配，`HIT GOOD TRAP`；见 [`3.8`](docs/stage3/3.8-K07双模式整核DiffTest.md)、[`3.9`](docs/stage3/3.9-K07-E16两笔实现.md)）
+- ✅ **交付版双模式 K07 整核 DiffTest：13/13 PASS**（E8 单笔 + E16 两笔，17209 指令 / 63027 周期，零失配，`HIT GOOD TRAP`；见 [`3.1`](docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md)）
 - ✅ 正数 / 负数 / 边界值（127 / -128 / 0 / 溢出累加 / vl=0/1/4）测试
 - ✅ 探索性补充：Native / Booth / Schoolbook / Karatsuba 四种乘法器面积-延迟对比（`docs/stage2/2.4`）
-- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/synth-BWFast`）：统一 Yosys 通用门级综合，K07 胜出；**最终交付为双模式 `K07.sv`**（面积 671.18 µm²、reg→reg 动态 2128.0 ps，见 [`3.7`](docs/stage3/3.7-K07双模式时序修正.md)）
-- ✅ Phase 2（E16 接入整核）：**已用两笔方案实现**（非遗留的四拍慢单元）——第 1 笔算元素 0–3，第 2 笔算元素 4–7 并回灌首笔结果，单次架构写回；`VIAlu`/`VipuCfg` 未改，面积 +106.49 µm²（+2.56%），详见 [`3.9`](docs/stage3/3.9-K07-E16两笔实现.md)
+- ✅ **48 版本候选综合比较**（`archive/BWFast_20261030/synth-BWFast`）：统一 Yosys 通用门级综合，K07 胜出；**最终交付为双模式 `K07.sv`**（面积 671.18 µm²、reg→reg 动态 2128.0 ps，见 [`3.3`](docs/stage3/3.3-延迟加速比分析.md)）
+- ✅ Phase 2（E16 接入整核）：**已用两笔方案实现**（非遗留的四拍慢单元）——第 1 笔算元素 0–3，第 2 笔算元素 4–7 并回灌首笔结果，单次架构写回；`VIAlu`/`VipuCfg` 未改，面积 +106.49 µm²（+2.56%），详见 [`3.1`](docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md)
 
 ### 阶段三：验证与优化（高难度）
 - ✅ 为 NEMU 模拟器新增 `vdot.vv` 指令支持（不写 vxsat/vcsr，与 RTL 口径一致）

@@ -1,6 +1,6 @@
 # stage3 / vdot-rtl-twopass
 
-K07 `vdot.vv` 的 **E16 两笔实现**源码副本，对应文档 `docs/stage3/3.9-K07-E16两笔实现.md`。
+K07 `vdot.vv` 的 **E16 两笔实现**源码副本，对应文档 `docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md`。
 
 ## 与 `code/stage2/vdot-rtl/VDotFu.scala` 的关系
 
@@ -46,7 +46,7 @@ assert(!pass2Conflict,
 
 组合后的语义：K07 在异步断言后要等一个时钟沿才清 `valid`（复位响应晚一拍），复位期间无有效事务，功能无害。
 
-> 2026-11-08 曾误判「异步复位块是与香山同步复位域混用」并尝试五种修复（插寄存器、改 `Bool`、改 `Reset()`、端口改名 wrapper），全部证伪。调查记录见 `docs/stage3/3.10-K07-E16两笔握手与复位.md` §4。
+> 2026-11-08 曾误判「异步复位块是与香山同步复位域混用」并尝试五种修复（插寄存器、改 `Bool`、改 `Reset()`、端口改名 wrapper），全部证伪。调查记录见 `docs/stage3/3.1-NEMU-vdot-指令扩展与协同仿真验证.md` §4。
 
 ## 验证
 
