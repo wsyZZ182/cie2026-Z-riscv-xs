@@ -59,7 +59,9 @@ cie2026-Z-riscv-xs/
 ├── archive/BWFast_20261030/docs-BWFast/                    # K07 文档（README / MODIFICATIONS / PHASE1-VERIFY）
 ├── logs/                           # 各阶段运行日志
 ├── screenshots/stage3/             # commit trace 写回证据截图
-├── videos/stage1/                  # 阶段1 hello 运行录屏
+├── videos/
+│   ├── stage1/                     # 阶段1 hello 运行录屏
+│   └── stage3/                     # 阶段3 波形仿真与性能分析录屏（4:00，含分镜与复现脚本）
 └── README.md
 ```
 

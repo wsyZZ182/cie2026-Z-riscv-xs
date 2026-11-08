@@ -12,6 +12,9 @@ hs_err_pid*
 *.mp4
 *.mov
 *.avi
+# 例外：交付录屏允许入库（单文件 < 5 MB）
+!videos/stage1/*.mp4
+!videos/stage3/*.mp4
 
 # build 产物
 build/
