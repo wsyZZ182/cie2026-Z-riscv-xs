@@ -43,7 +43,6 @@
 | `v1.4/results/` | `config.json`、`result.json`（K07：`PASS_RTL_GENERIC`，11,454 组合单元 / 621 寄存器位 / 深度 65） |
 | `v1.4/docs/` | 实验说明（`README.md`）、批处理记录（`MODIFICATIONS.md`） |
 | `v1.4-final/PHASE1-VERIFY.md` | Phase 1 整核 DiffTest（700 用例；E8 走 K07，E16/E32 回退 `VDotCore`） |
-| `v1.4-final/K07_交接包修正_20261106.md` | K07 交接包三处修正说明（2026-11-06） |
 | `v1.4-final/K07_交接包修正_20261106.md` | K07 交接包三处修正说明（2026-11-06，原在 `docs/description/`） |
 
 原始 6 目录合计 40 个文件。其中 23 个 `*.log` 按 `.gitignore` 的 `*.log` 规则**不进入 git 版本库**，只存在于本目录与 tar 包；完整清单见 `SHA256SUMS`。
