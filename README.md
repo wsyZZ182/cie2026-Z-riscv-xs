@@ -71,7 +71,8 @@ cie2026-Z-riscv-xs/
 ├── screenshots/stage3/                    # commit trace 写回证据截图
 ├── videos/
 │   ├── stage1/                            # 阶段1 hello 运行录屏（附网盘链接说明）
-│   └── stage3/                            # 阶段3 波形仿真与性能分析录屏（4:00，含分镜与复现脚本 tools/）
+│   ├── stage3/                            # 阶段3 波形仿真与性能分析录屏（4:00，含分镜与复现脚本 tools/）
+│   └── Video Project 1.mp4                # 项目技术讲解（12:09，K07 的研发与取舍）
 └── README.md
 ```
 
