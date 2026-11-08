@@ -105,6 +105,18 @@ class VDotFu extends Module {
       "(e16 must be followed by at least one bubble)")
 
   k07.io.clock := clock
+  // ---- K07 的复位边界（2026-11-08 实测澄清）--------------------------------
+  // K07.sv 内部是**同步复位**：全文只有一个 always @(posedge clock)，
+  // 其中 `if (reset) valid <= 0`；outBits_result 不受复位影响。
+  //
+  // 但**香山整体是异步复位域**：utility/ResetGen 输出 AsyncReset，生成 RTL 里
+  // 1619 个模块中有 829 个使用 `always @(posedge clock or posedge reset)`
+  //（VIPU / Reduction / ExeUnit 均是）。所以这里必须用 asAsyncReset，
+  // 让 VDotFu 的复位域与香山一致；声明成 Bool 反而会让 firtool 报
+  // `resetReg[] simultaneously connected to async and sync resets`。
+  //
+  // 二者组合的实际语义：K07 在异步复位断言后要等下一个时钟沿才清 valid
+  //（复位响应晚一拍）。复位期间本来就没有有效事务，功能无害。
   k07.io.reset := reset.asAsyncReset
   k07.io.io_flush := false.B
   k07.io.io_in_valid := k07Fire || pass2Fire

@@ -6,7 +6,7 @@ K07 `vdot.vv` 的 **E16 两笔实现**源码副本，对应文档 `docs/stage3/3
 
 | 项 | stage2（单笔） | stage3（两笔，本目录） |
 |---|---|---|
-| 文件 | `VDotFu.scala` 164 行，SHA256 `018da2fd…` | `VDotFu.scala` 229 行 |
+| 文件 | `VDotFu.scala` 164 行，SHA256 `018da2fd…` | `VDotFu.scala` 241 行（含时序与复位注释） |
 | E8 | K07 单笔，16 对 | 同左，未改 |
 | E16 | K07 单笔，**只算低 64 位的 4 对**（语义缺口） | K07 **两笔**：低 4 对 + 高 4 对，8 对完整 |
 | E32 | VDotCore | 同左，未改 |
@@ -37,12 +37,25 @@ assert(!pass2Conflict,
 
 实测（背靠背压力测试，两条 `vdot` 的 PC 差 4 字节）断言从未触发：香山 vipu 的实际发射节奏会插入间隔。该断言是防御性检查。
 
+## 复位边界
+
+`K07.sv` 内部是同步复位（唯一的 `always @(posedge clock)` 里 `if (reset)`，只清 `valid`），
+但**香山整体是异步复位域**：`utility/ResetGen` 输出 `AsyncReset`，生成 RTL 中 1619 个模块里
+**829 个**使用 `posedge reset`（`VIPU` / `Reduction` / `ExeUnit` 都是）。所以 `K07_blackbox.scala`
+的 reset 端口必须声明为 `Input(AsyncReset())`，接 `reset.asAsyncReset`。
+
+组合后的语义：K07 在异步断言后要等一个时钟沿才清 `valid`（复位响应晚一拍），复位期间无有效事务，功能无害。
+
+> 2026-11-08 曾误判「异步复位块是与香山同步复位域混用」并尝试五种修复（插寄存器、改 `Bool`、改 `Reset()`、端口改名 wrapper），全部证伪。调查记录见 `docs/stage3/3.10-K07-E16两笔握手与复位.md` §4。
+
 ## 验证
 
 - 13 项整核 DiffTest：**13/13 PASS**，`HIT GOOD TRAP`，`instrCnt = 17209 / cycleCnt = 63027`
 - E16 正数 36（原 10）、E16 负数 −36（原 −10）
 - 背靠背 3 项 PASS
 - 面积增量 **+106.49 µm²**（整块 VDotFu 4152.92 → 4259.42 µm²，**+2.56%**；ASAP7 RVT TT 实测）
+
+2026-11-08 用 build8（`asAsyncReset` 恢复版）复跑，13 项与 `instrCnt/cycleCnt` 与 build3 逐位一致。
 
 完整证据：`xs_cycle_calibration/runs/k07_e16_twopass_20261107/`（24 项含 SHA256SUMS）。
 
