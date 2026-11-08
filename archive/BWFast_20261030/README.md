@@ -70,6 +70,14 @@
 2. `v1.4/docs/README.md` 第 9 行「本环境没有 sbt / Verilator / Yosys」已不适用，文首已加补记。
 3. 仓库根 `README.md` 的「K07 胜出并定为最终设计」是 2026-10 的结论；最终交付版为 `K07.sv`。
 
+## 已知问题（2026-11-08 复核）
+
+- `v1.4/src/BatchConfig.scala` 的 K07 配置含 `S02`（7:3 计数器）与 `S03`（15:4 计数器），
+  但实测 elaboration 的 `TREE` 日志显示 **1257 次压缩全部为 3:2**，两者**从未被触发**。
+  根因：`FastLogic.predict()` 按保守 FA 深度估算成本（源码注释 *no fictitious one-level large counter*），
+  `chooseSize` 因此始终选 3。交付版实际为 **3:2 FA 计数树**。
+  详见 `docs/stage2/2.1-vdot-vv-设计文档.md` §7.1b。
+
 ## 与交付文档的关系
 
 | 内容 | 位置 |
