@@ -5,7 +5,7 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
-# ===== 大文件不进 git（放网盘，见 assets/README.md）=====
+# ===== 大文件不进 git（放网盘，链接直接写在引用它的文档/录屏说明里）=====
 *.fst
 *.vcd
 *.vcd.gz
